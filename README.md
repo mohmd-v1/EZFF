@@ -23,7 +23,6 @@ d8aa917a061e3cabcb4875887a6426680eedf006158cd75830ccd926dd26ea8d
 
 ---
 
-![EZFF Interface Preview](assets/preview.png)
 
 </div>
 
