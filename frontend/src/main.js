@@ -2,7 +2,7 @@ import './style.css';
 import './app.css';
 
 import { OnFileDrop, EventsOn } from '../wailsjs/runtime/runtime';
-import { CheckFFmpeg, InstallFFmpegWindows, GetMediaInfo, SelectFile, ExtractStream, RemuxFile, InjectStream, ConcatFiles, TranscodeFile, RunCustomCommand, GetVideoThumbnail, GetOutputSettings, SetOutputSettings, SelectFolder, CancelActiveCommand } from '../wailsjs/go/main/App';
+import { CheckFFmpeg, InstallFFmpegWindows, GetMediaInfo, SelectFile, SelectImageFile, ExtractStream, RemuxFile, InjectStream, ConcatFiles, TranscodeFile, RunCustomCommand, GetVideoThumbnail, GetOutputSettings, SetOutputSettings, SelectFolder, CancelActiveCommand } from '../wailsjs/go/main/App';
 
 // Cache DOM elements
 const welcomePanel = document.getElementById('welcomePanel');
@@ -308,6 +308,30 @@ function setupEventListeners() {
         showPanel(encoderPanel);
         updateEncoderSourceInfo();
     });
+
+    // Advanced Encoder background image listeners
+    const browseEncStaticImageBtn = document.getElementById('browseEncStaticImageBtn');
+    const clearEncStaticImageBtn = document.getElementById('clearEncStaticImageBtn');
+    const encStaticImagePath = document.getElementById('encStaticImagePath');
+
+    if (browseEncStaticImageBtn && clearEncStaticImageBtn && encStaticImagePath) {
+        browseEncStaticImageBtn.addEventListener('click', async () => {
+            try {
+                const imgPath = await SelectImageFile();
+                if (imgPath) {
+                    encStaticImagePath.value = imgPath;
+                    clearEncStaticImageBtn.style.display = 'inline-block';
+                }
+            } catch (err) {
+                showError("Image Selection Failed", err);
+            }
+        });
+
+        clearEncStaticImageBtn.addEventListener('click', () => {
+            encStaticImagePath.value = '';
+            clearEncStaticImageBtn.style.display = 'none';
+        });
+    }
 
     navConcatBtn.addEventListener('click', () => {
         navConcatBtn.classList.add('active');
@@ -1745,6 +1769,9 @@ function setupEncoderListeners() {
         let targetFormatVal = encTargetFormat.value;
         if (targetFormatVal === 'custom') targetFormatVal = document.getElementById('encTargetFormatCustom').value.trim() || 'mp4';
 
+        const staticImgVal = document.getElementById('encStaticImagePath').value.trim();
+        const vPresetVal = document.getElementById('encPreset').value;
+
         showLoader(`Encoding custom transcoded file...`, true);
         try {
             const outputPath = await TranscodeFile(
@@ -1757,12 +1784,14 @@ function setupEncoderListeners() {
                 resVal,
                 fpsVal,
                 aspectVal,
+                vPresetVal,
                 aCodecVal,
                 aRateModeVal,
                 aBitrateVal,
                 aVbrVal,
                 channelsVal,
                 targetFormatVal,
+                staticImgVal,
                 currentDuration
             );
             showPanel(encoderPanel);
@@ -2287,16 +2316,35 @@ function generateFFmpegCommand() {
     let targetFormatVal = encTargetFormat.value;
     if (targetFormatVal === 'custom') targetFormatVal = document.getElementById('encTargetFormatCustom').value.trim() || 'mp4';
 
+    const staticImgVal = document.getElementById('encStaticImagePath').value.trim();
+    const vPresetVal = document.getElementById('encPreset').value;
+
     // Build the string representation
-    const args = ["ffmpeg", "-y", "-i", `"${currentFilePath}"`];
+    const args = ["ffmpeg", "-y"];
+    if (staticImgVal) {
+        if (fpsVal !== "original" && fpsVal !== "") {
+            args.push("-framerate", fpsVal);
+        } else {
+            args.push("-framerate", "1");
+        }
+        args.push("-loop", "1", "-i", `"${staticImgVal}"`, "-i", `"${currentFilePath}"`);
+        args.push("-map", "0:v:0", "-map", "1:a:0");
+    } else {
+        args.push("-i", `"${currentFilePath}"`);
+    }
 
     // --- Video Configuration ---
-    if (vCodecVal === "copy") {
+    let vCodecValFinal = vCodecVal;
+    if (staticImgVal && (vCodecVal === "copy" || vCodecVal === "none")) {
+        vCodecValFinal = "libx264";
+    }
+
+    if (vCodecValFinal === "copy") {
         args.push("-c:v", "copy");
-    } else if (vCodecVal === "none") {
+    } else if (vCodecValFinal === "none") {
         args.push("-vn");
     } else {
-        args.push("-c:v", vCodecVal);
+        args.push("-c:v", vCodecValFinal);
 
         // Video filters
         const videoFilters = [];
@@ -2315,6 +2363,11 @@ function generateFFmpegCommand() {
             args.push("-aspect", aspectVal);
         }
 
+        // Preset
+        if (vPresetVal !== "none" && vPresetVal !== "") {
+            args.push("-preset", vPresetVal);
+        }
+
         // Rate Control Modes
         if (vRateModeVal === "cbr") {
             args.push("-b:v", vBitrateVal);
@@ -2331,6 +2384,10 @@ function generateFFmpegCommand() {
             }
         } else if (vRateModeVal === "crf") {
             args.push("-crf", vCrfVal);
+        }
+
+        if (staticImgVal) {
+            args.push("-pix_fmt", "yuv420p");
         }
     }
 
@@ -2365,6 +2422,10 @@ function generateFFmpegCommand() {
                 args.push("-q:a", aVbrVal);
             }
         }
+    }
+
+    if (staticImgVal) {
+        args.push("-shortest");
     }
 
     // Output Path placeholder

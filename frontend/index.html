@@ -588,12 +588,34 @@
                             </div>
                         </div>
 
+                        <!-- Audio to Video Static Image Overlay -->
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem; border-top: 1px dashed var(--border-color); padding-top: 1rem;">
+                            <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted); display: flex; align-items: center; gap: 0.35rem;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--color-primary);">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                    <polyline points="21 15 16 10 5 21"></polyline>
+                                </svg>
+                                <span>Static Image (Audio to Video)</span>
+                            </label>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <input type="text" id="encStaticImagePath" placeholder="Browse background image..." readonly
+                                    class="custom-select" style="flex: 1; padding: 0.4rem 0.75rem; font-size: 0.8rem; border-radius: 8px; font-family: monospace;">
+                                <button class="browse-btn" id="browseEncStaticImageBtn" style="padding: 0.4rem 0.85rem; font-size: 0.8rem; border-radius: 8px; white-space: nowrap;">
+                                    Browse
+                                </button>
+                                <button class="browse-btn" id="clearEncStaticImageBtn" style="padding: 0.4rem 0.85rem; font-size: 0.8rem; border-radius: 8px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); color: var(--color-danger); display: none; white-space: nowrap;">
+                                    Clear
+                                </button>
+                            </div>
+                            <span style="font-size: 0.7rem; color: var(--text-muted);">Select an image to loop it as background video, matching the audio length.</span>
+                        </div>
+
                         <!-- Rate Control Mode Selector -->
                         <div id="encVRateModeContainer" style="display: flex; flex-direction: column; gap: 0.5rem;">
                             <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-muted);">Rate Control
                                 Mode</label>
-                            <div
-                                style="display: flex; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 10px; padding: 0.25rem; gap: 0.25rem;">
+                            <div style="display: flex; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 10px; padding: 0.25rem; gap: 0.25rem;">
                                 <button class="nav-tab active" id="modeCrfBtn"
                                     style="flex: 1; padding: 0.4rem; font-size: 0.8rem; justify-content: center; border-radius: 7px;">CRF
                                     (Quality)</button>
@@ -764,6 +786,24 @@
                                     <option value="21:9">21:9 (Ultrawide Cinema)</option>
                                     <option value="1:1">1:1 (Square / Instagram)</option>
                                     <option value="9:16">9:16 (Vertical Video / TikTok)</option>
+                                </select>
+                            </div>
+
+                            <!-- Preset select -->
+                            <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                                <label style="font-size: 0.75rem; font-weight: 600; color: var(--text-muted);">Encoding Speed (Preset)</label>
+                                <select class="custom-select" id="encPreset"
+                                    style="width: 100%; padding: 0.4rem 0.75rem; font-size: 0.8rem; border-radius: 8px;">
+                                    <option value="none">Default (No change)</option>
+                                    <option value="ultrafast">Ultrafast (Lowest quality/Highest speed)</option>
+                                    <option value="superfast">Superfast</option>
+                                    <option value="veryfast">Veryfast</option>
+                                    <option value="faster">Faster</option>
+                                    <option value="fast">Fast</option>
+                                    <option value="medium" selected>Medium (Standard / Balanced)</option>
+                                    <option value="slow">Slow (Higher quality/Lower speed)</option>
+                                    <option value="slower">Slower</option>
+                                    <option value="veryslow">Veryslow (Maximum quality/Lowest speed)</option>
                                 </select>
                             </div>
                         </div>

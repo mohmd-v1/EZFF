@@ -54,10 +54,14 @@ export function SelectFolder() {
   return window['go']['main']['App']['SelectFolder']();
 }
 
+export function SelectImageFile() {
+  return window['go']['main']['App']['SelectImageFile']();
+}
+
 export function SetOutputSettings(arg1, arg2) {
   return window['go']['main']['App']['SetOutputSettings'](arg1, arg2);
 }
 
-export function TranscodeFile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14, arg15, arg16) {
-  return window['go']['main']['App']['TranscodeFile'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14, arg15, arg16);
+export function TranscodeFile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14, arg15, arg16, arg17, arg18) {
+  return window['go']['main']['App']['TranscodeFile'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10, arg11, arg12, arg13, arg14, arg15, arg16, arg17, arg18);
 }

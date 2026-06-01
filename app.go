@@ -397,12 +397,14 @@ func (a *App) TranscodeFile(
 	resolution string,
 	fps string,
 	aspectRatio string,
+	vPreset string,
 	aCodec string,
 	aRateMode string,
 	aBitrate string,
 	aVbrQuality string,
 	audioChannels string,
 	targetFormat string,
+	staticImagePath string,
 	totalDuration float64,
 ) (string, error) {
 	// Prepare default name
@@ -430,15 +432,34 @@ func (a *App) TranscodeFile(
 	}
 
 	// Build FFmpeg command
-	args := []string{"-y", "-i", inputPath}
+	var args []string
+	if staticImagePath != "" {
+		// Looped Image input as video, Audio file as audio
+		args = []string{"-y"}
+		if fps != "original" && fps != "" {
+			args = append(args, "-framerate", fps)
+		} else {
+			args = append(args, "-framerate", "1")
+		}
+		args = append(args, "-loop", "1", "-i", staticImagePath, "-i", inputPath)
+		// Map video from image and audio from original input
+		args = append(args, "-map", "0:v:0", "-map", "1:a:0")
+	} else {
+		args = []string{"-y", "-i", inputPath}
+	}
 
 	// --- Video Configuration ---
-	if vCodec == "copy" {
+	vCodecFinal := vCodec
+	if staticImagePath != "" && (vCodec == "copy" || vCodec == "none") {
+		vCodecFinal = "libx264"
+	}
+
+	if vCodecFinal == "copy" {
 		args = append(args, "-c:v", "copy")
-	} else if vCodec == "none" {
+	} else if vCodecFinal == "none" {
 		args = append(args, "-vn")
 	} else {
-		args = append(args, "-c:v", vCodec)
+		args = append(args, "-c:v", vCodecFinal)
 
 		// Video filters (Resolution & Frame Rate)
 		var videoFilters []string
@@ -458,6 +479,11 @@ func (a *App) TranscodeFile(
 			args = append(args, "-aspect", aspectRatio)
 		}
 
+		// Preset
+		if vPreset != "none" && vPreset != "" {
+			args = append(args, "-preset", vPreset)
+		}
+
 		// Rate Control Modes
 		switch vRateMode {
 		case "cbr":
@@ -475,6 +501,11 @@ func (a *App) TranscodeFile(
 			}
 		case "crf":
 			args = append(args, "-crf", strconv.Itoa(vCrf))
+		}
+
+		// yuv420p is highly compatible for static image input videos
+		if staticImagePath != "" {
+			args = append(args, "-pix_fmt", "yuv420p")
 		}
 	}
 
@@ -514,6 +545,10 @@ func (a *App) TranscodeFile(
 				args = append(args, "-q:a", aVbrQuality)
 			}
 		}
+	}
+
+	if staticImagePath != "" {
+		args = append(args, "-shortest")
 	}
 
 	// Append output path to arguments
@@ -764,5 +799,23 @@ func (a *App) InstallFFmpegWindows() error {
 	cmd := exec.Command("cmd", "/c", "start", "cmd", "/c", "winget install \"FFmpeg (Essentials Build)\" --accept-package-agreements --accept-source-agreements && echo. && echo FFmpeg installed successfully! Please restart the Easy-FFmpeg app. && pause")
 	return cmd.Start()
 }
+
+// SelectImageFile opens a native system file selector for images only
+func (a *App) SelectImageFile() (string, error) {
+	filePath, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Background Image",
+		Filters: []runtime.FileFilter{
+			{
+				DisplayName: "Image Files (*.jpg, *.jpeg, *.png, *.webp)",
+				Pattern:     "*.jpg;*.jpeg;*.png;*.webp",
+			},
+		},
+	})
+	if err != nil {
+		return "", err
+	}
+	return filePath, nil
+}
+
 
 
