@@ -1,4 +1,10 @@
-# EZFF (Easy FFmpeg) 🚀
+
+<div align="center">
+
+<img src="./assets/preview.png" width="150"  alt="YT-MANGO">
+
+# EZFF (Easy FFmpeg) 
+EZFF is a premium, high-performance, glassmorphic desktop media-processing suite built on **Wails v2** and **FFmpeg**. It combines the extreme speed of native command-line utility operations with a state-of-the-art, dark-themed user interface, allowing creators and developers to execute lossless remuxing, stream extraction/injection, merging, custom transcoding, and live command compiler execution seamlessly.
 
 [![Wails](https://img.shields.io/badge/Wails-v2-blue?style=for-the-badge&logo=go)](https://wails.io)
 [![Go](https://img.shields.io/badge/Go-1.21+-00ADD8?style=for-the-badge&logo=go)](https://go.dev)
@@ -6,9 +12,8 @@
 [![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?style=for-the-badge&logo=windows)](https://microsoft.com)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
-EZFF is a premium, high-performance, glassmorphic desktop media-processing suite built on **Wails v2** and **FFmpeg**. It combines the extreme speed of native command-line utility operations with a state-of-the-art, dark-themed user interface, allowing creators and developers to execute lossless remuxing, stream extraction/injection, merging, custom transcoding, and live command compiler execution seamlessly.
 
-![EZFF Interface Preview](assets/preview.png)
+</div>
 
 ---
 
