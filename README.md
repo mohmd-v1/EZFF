@@ -2,7 +2,7 @@
 
 <img src="./assets/preview.png" width="120" alt="EZFF Logo">
 
-# EZFF (Easy FFmpeg) 🚀
+# EZFF (Easy FFmpeg) 
 EZFF is a premium, high-performance, glassmorphic desktop media-processing suite built on **Wails v2** and **FFmpeg**. It combines the extreme speed of native command-line utility operations with a state-of-the-art, dark-themed user interface, allowing creators and developers to execute lossless remuxing, stream extraction/injection, merging, custom transcoding, and live command compiler execution seamlessly.
 
 [![Wails](https://img.shields.io/badge/Wails-v2-blue?style=for-the-badge&logo=go)](https://wails.io)
