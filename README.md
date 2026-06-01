@@ -5,8 +5,15 @@
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=node.js)](https://nodejs.org)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?style=for-the-badge&logo=windows)](https://microsoft.com)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/mohmd-v1/EZFF?style=for-the-badge&color=59D14F)](https://github.com/mohmd-v1/EZFF/releases)
 
 EZFF is a premium, high-performance, glassmorphic desktop media-processing suite built on **Wails v2** and **FFmpeg**. It combines the extreme speed of native command-line utility operations with a state-of-the-art, dark-themed user interface, allowing creators and developers to execute lossless remuxing, stream extraction/injection, merging, custom transcoding, and live command compiler execution seamlessly.
+
+---
+
+### 📥 [Download Latest Release for Windows](https://github.com/mohmd-v1/EZFF/releases) 🚀
+
+---
 
 ![EZFF Interface Preview](assets/preview.png)
 
