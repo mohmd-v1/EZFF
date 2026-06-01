@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="./icon.png" width="120" alt="EZFF Logo">
+<img src="./assets/preview.png" width="120" alt="EZFF Logo">
 
 # EZFF (Easy FFmpeg) 🚀
 EZFF is a premium, high-performance, glassmorphic desktop media-processing suite built on **Wails v2** and **FFmpeg**. It combines the extreme speed of native command-line utility operations with a state-of-the-art, dark-themed user interface, allowing creators and developers to execute lossless remuxing, stream extraction/injection, merging, custom transcoding, and live command compiler execution seamlessly.
@@ -10,22 +10,27 @@ EZFF is a premium, high-performance, glassmorphic desktop media-processing suite
 [![Node.js](https://img.shields.io/badge/Node.js-20+-339933?style=for-the-badge&logo=node.js)](https://nodejs.org)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?style=for-the-badge&logo=windows)](https://microsoft.com)
 [![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
-[![Latest Release](https://img.shields.io/github/v/release/mohmd-v1/EZFF?style=for-the-badge&color=59D14F)](https://github.com/mohmd-v1/EZFF/releases)
-
----
-
-### 📥 [Download Latest Release for Windows (ZIP)](https://github.com/mohmd-v1/EZFF/releases/download/untagged-8f65d754a69ae3cb3add/EZFF-Windows.zip)
-
-**SHA-256 Checksum:**
-```text
-d8aa917a061e3cabcb4875887a6426680eedf006158cd75830ccd926dd26ea8d
-```
-
----
-
-
 </div>
 
+---
+[![Latest Release](https://img.shields.io/github/v/release/mohmd-v1/EZFF?style=for-the-badge&color=59D14F)](https://github.com/mohmd-v1/EZFF/releases)
+### 📥 [Download Latest Release for Windows (ZIP)](https://github.com/mohmd-v1/EZFF/releases/download/untagged-8f65d754a69ae3cb3add/EZFF-Windows.zip)
+
+
+---
+## Screenshots
+
+| HOME  |
+|---------------|
+| <img src="assets/home.png" width="900">  |
+
+| Lossless Remuxing (Instant | Extract Stream |
+|--------|---------|
+| <img src="assets/analyzer.png" width="450"> | <img src="assets/extract.png" width="450"> |
+
+| Advanced Custom Encoder | merge them instantly without re-encoding |
+|----------|-------------|
+| <img src="assets/Recode.png" width="450"> | <img src="assets/consolidate.png" width="450"> |
 ---
 
 ## ✨ Key Features Showcase
