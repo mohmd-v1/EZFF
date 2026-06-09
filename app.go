@@ -783,6 +783,7 @@ func (a *App) getOutputPath(title string, defaultFilename string, filterName str
 // If it fails, it returns an empty string.
 func (a *App) CheckFFmpeg() string {
 	cmd := exec.Command("ffmpeg", "-version")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return ""
@@ -796,8 +797,9 @@ func (a *App) CheckFFmpeg() string {
 
 // InstallFFmpegWindows runs the winget command to install FFmpeg on Windows via a visible terminal.
 func (a *App) InstallFFmpegWindows() error {
-	cmd := exec.Command("cmd", "/c", "start", "cmd", "/c", "winget install \"FFmpeg (Essentials Build)\" --accept-package-agreements --accept-source-agreements && echo. && echo FFmpeg installed successfully! Please restart the Easy-FFmpeg app. && pause")
-	return cmd.Start()
+	cmd := exec.Command("cmd", "/c", "winget install \"FFmpeg (Essentials Build)\" --accept-package-agreements --accept-source-agreements")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	return cmd.Run()
 }
 
 // SelectImageFile opens a native system file selector for images only
