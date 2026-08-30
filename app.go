@@ -68,6 +68,31 @@ func (a *App) SelectFile() (string, error) {
 	return filePath, nil
 }
 
+// SelectMultipleFiles opens a native system file selector for selecting multiple media files
+func (a *App) SelectMultipleFiles() ([]string, error) {
+	filePaths, err := runtime.OpenMultipleFilesDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Multiple Media Files",
+		Filters: []runtime.FileFilter{
+			{
+				DisplayName: "All Supported Formats (*.mp4, *.mkv, *.mp3, *.srt, *.ass, *.vtt, ...)",
+				Pattern:     "*.mp4;*.mkv;*.avi;*.mov;*.mp3;*.wav;*.flac;*.m4a;*.webm;*.opus;*.ogg;*.srt;*.ass;*.vtt;*.ssa",
+			},
+			{
+				DisplayName: "Media Files (*.mp4, *.mkv, *.avi, *.mov, *.mp3, *.wav, *.flac)",
+				Pattern:     "*.mp4;*.mkv;*.avi;*.mov;*.mp3;*.wav;*.flac;*.m4a;*.webm;*.opus;*.ogg",
+			},
+			{
+				DisplayName: "All Files (*.*)",
+				Pattern:     "*.*",
+			},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	return filePaths, nil
+}
+
 // GetMediaInfo runs ffprobe to retrieve JSON metadata for a media file without flashing command prompts
 func (a *App) GetMediaInfo(filePath string) (string, error) {
 	// Execute ffprobe with hidden window setting to prevent terminal flashing on Windows
@@ -405,6 +430,12 @@ func (a *App) TranscodeFile(
 	audioChannels string,
 	targetFormat string,
 	staticImagePath string,
+	startTime string,
+	endTime string,
+	seekMode string,
+	avoidNegativeTs bool,
+	cropFilter string,
+	outputPathOverride string,
 	totalDuration float64,
 ) (string, error) {
 	// Prepare default name
@@ -423,29 +454,56 @@ func (a *App) TranscodeFile(
 
 	defaultFilename := fmt.Sprintf("%s_encoded.%s", nameWithoutExt, targetExt)
 
-	outputPath, err := a.getOutputPath("Save Customized Encode", defaultFilename, fmt.Sprintf("Media File (*.%s)", targetExt), "*."+targetExt, inputPath)
-	if err != nil {
-		return "", err
-	}
-	if outputPath == "" {
-		return "", fmt.Errorf("encoding cancelled by user")
+	var outputPath string
+	var err error
+	if outputPathOverride != "" {
+		outputPath = outputPathOverride
+	} else {
+		outputPath, err = a.getOutputPath("Save Customized Encode", defaultFilename, fmt.Sprintf("Media File (*.%s)", targetExt), "*."+targetExt, inputPath)
+		if err != nil {
+			return "", err
+		}
+		if outputPath == "" {
+			return "", fmt.Errorf("encoding cancelled by user")
+		}
 	}
 
 	// Build FFmpeg command
 	var args []string
+	args = append(args, "-y")
+	
+	if avoidNegativeTs && startTime != "" && endTime != "" {
+		args = append(args, "-avoid_negative_ts", "make_zero")
+	}
+
 	if staticImagePath != "" {
-		// Looped Image input as video, Audio file as audio
-		args = []string{"-y"}
 		if fps != "original" && fps != "" {
 			args = append(args, "-framerate", fps)
 		} else {
 			args = append(args, "-framerate", "1")
 		}
-		args = append(args, "-loop", "1", "-i", staticImagePath, "-i", inputPath)
-		// Map video from image and audio from original input
+		
+		if startTime != "" && endTime != "" && seekMode == "fast" {
+			args = append(args, "-ss", startTime, "-to", endTime)
+		}
+		
+		args = append(args, "-loop", "1", "-i", staticImagePath)
+		
+		if startTime != "" && endTime != "" && seekMode != "fast" {
+			args = append(args, "-ss", startTime, "-to", endTime)
+		}
+		args = append(args, "-i", inputPath)
 		args = append(args, "-map", "0:v:0", "-map", "1:a:0")
 	} else {
-		args = []string{"-y", "-i", inputPath}
+		if startTime != "" && endTime != "" {
+			if seekMode == "fast" {
+				args = append(args, "-ss", startTime, "-to", endTime, "-i", inputPath)
+			} else {
+				args = append(args, "-i", inputPath, "-ss", startTime, "-to", endTime)
+			}
+		} else {
+			args = append(args, "-i", inputPath)
+		}
 	}
 
 	// --- Video Configuration ---
@@ -461,8 +519,11 @@ func (a *App) TranscodeFile(
 	} else {
 		args = append(args, "-c:v", vCodecFinal)
 
-		// Video filters (Resolution & Frame Rate)
+		// Video filters (Resolution, Frame Rate & Crop)
 		var videoFilters []string
+		if cropFilter != "" {
+			videoFilters = append(videoFilters, cropFilter)
+		}
 		if resolution != "original" && resolution != "" {
 			videoFilters = append(videoFilters, "scale="+resolution)
 		}

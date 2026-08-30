@@ -29,6 +29,8 @@ export function SelectFolder():Promise<string>;
 
 export function SelectImageFile():Promise<string>;
 
+export function SelectMultipleFiles():Promise<Array<string>>;
+
 export function SetOutputSettings(arg1:string,arg2:string):Promise<void>;
 
-export function TranscodeFile(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:number,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string,arg12:string,arg13:string,arg14:string,arg15:string,arg16:string,arg17:string,arg18:number):Promise<string>;
+export function TranscodeFile(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:number,arg7:string,arg8:string,arg9:string,arg10:string,arg11:string,arg12:string,arg13:string,arg14:string,arg15:string,arg16:string,arg17:string,arg18:string,arg19:string,arg20:string,arg21:boolean,arg22:string,arg23:string,arg24:number):Promise<string>;

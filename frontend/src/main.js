@@ -2,7 +2,7 @@ import './style.css';
 import './app.css';
 
 import { OnFileDrop, EventsOn } from '../wailsjs/runtime/runtime';
-import { CheckFFmpeg, InstallFFmpegWindows, GetMediaInfo, SelectFile, SelectImageFile, ExtractStream, RemuxFile, InjectStream, ConcatFiles, TranscodeFile, RunCustomCommand, GetVideoThumbnail, GetOutputSettings, SetOutputSettings, SelectFolder, CancelActiveCommand } from '../wailsjs/go/main/App';
+import { CheckFFmpeg, InstallFFmpegWindows, GetMediaInfo, SelectFile, SelectMultipleFiles, SelectImageFile, ExtractStream, RemuxFile, InjectStream, ConcatFiles, TranscodeFile, RunCustomCommand, GetVideoThumbnail, GetOutputSettings, SetOutputSettings, SelectFolder, CancelActiveCommand } from '../wailsjs/go/main/App';
 
 // Cache DOM elements
 const welcomePanel = document.getElementById('welcomePanel');
@@ -151,6 +151,11 @@ let currentDuration = 0;
 let currentInjectFilePath = null;
 let concatFileListQueue = [];
 
+// Batch mode state variables
+window.isBatchModeActive = false;
+window.batchQueue = [];
+window.batchOutputDir = "";
+
 // Initialize app
 async function init() {
     setupEventListeners();
@@ -162,6 +167,14 @@ async function init() {
         const progressVal = Math.round(percent);
         progressBarFill.style.width = `${progressVal}%`;
         progressBarText.innerText = `${progressVal}%`;
+        
+        if (window.isBatchModeActive && window.batchQueue.length > 0) {
+            const activeItem = window.batchQueue.find(item => item.status === 'processing');
+            if (activeItem) {
+                activeItem.percent = progressVal;
+                renderBatchQueue();
+            }
+        }
     });
 
     // Check FFmpeg Installation
@@ -297,11 +310,6 @@ function setupEventListeners() {
     });
 
     navEncoderBtn.addEventListener('click', () => {
-        if (!currentFilePath) {
-            showToast("Please drag & drop or select a file first!");
-            navAnalyzerBtn.click();
-            return;
-        }
         navEncoderBtn.classList.add('active');
         navAnalyzerBtn.classList.remove('active');
         navConcatBtn.classList.remove('active');
@@ -559,6 +567,8 @@ function setupDragAndDrop() {
                     analyzeFile(paths[0]);
                 }
                 // If dropped anywhere else on the dashboard, we do nothing to prevent accidental overrides!
+            } else if (encoderPanel.style.display !== 'none' && window.isBatchModeActive) {
+                paths.forEach(p => addFileToBatchQueue(p));
             } else {
                 // Welcome screen: drag & drop anywhere analyzes the file
                 analyzeFile(paths[0]);
@@ -597,6 +607,7 @@ async function analyzeFile(filePath) {
         currentDuration = data.format && data.format.duration ? parseFloat(data.format.duration) : 0;
 
         populateDashboard(filePath, data);
+        if (window.updateAdvancedEncoderUI) window.updateAdvancedEncoderUI(data);
         showPanel(dashboardPanel);
 
         // Asynchronously fetch thumbnail for all files to support embedded cover art in MP3, FLAC, etc.
@@ -622,6 +633,71 @@ async function analyzeFile(filePath) {
         showPanel(welcomePanel);
     }
 }
+
+window.updateAdvancedEncoderUI = function(data) {
+    if (!data) return;
+    
+    let hasAudio = false;
+    let hasVideo = false;
+    
+    if (data.streams) {
+        data.streams.forEach(stream => {
+            if (stream.codec_type === 'audio') hasAudio = true;
+            if (stream.codec_type === 'video' && stream.codec_name !== 'mjpeg' && stream.codec_name !== 'png') hasVideo = true;
+        });
+    }
+
+    const checkVideoState = () => {
+        const hasStaticImg = document.getElementById('encStaticImagePath') && document.getElementById('encStaticImagePath').value.trim() !== "";
+        const videoActive = hasVideo || hasStaticImg;
+        
+        const videoCol = document.getElementById('advancedCutVideoBtn')?.parentElement?.parentElement;
+        if (videoCol) {
+            if (!videoActive) {
+                videoCol.style.opacity = "0.5";
+                videoCol.style.pointerEvents = "none";
+                const vCodec = document.getElementById('encVCodec');
+                if(vCodec) {
+                    vCodec.value = "none";
+                    vCodec.dispatchEvent(new Event('change'));
+                }
+            } else {
+                videoCol.style.opacity = "1";
+                videoCol.style.pointerEvents = "auto";
+                const vCodec = document.getElementById('encVCodec');
+                if(vCodec && vCodec.value === "none" && hasStaticImg) {
+                    vCodec.value = "libx264";
+                    vCodec.dispatchEvent(new Event('change'));
+                }
+            }
+        }
+    };
+
+    const audioCol = document.getElementById('advancedCutAudioBtn')?.parentElement?.parentElement;
+    if (audioCol) {
+        if (!hasAudio) {
+            audioCol.style.opacity = "0.5";
+            audioCol.style.pointerEvents = "none";
+            const aCodec = document.getElementById('encACodec');
+            if(aCodec) {
+                aCodec.value = "none";
+                aCodec.dispatchEvent(new Event('change'));
+            }
+        } else {
+            audioCol.style.opacity = "1";
+            audioCol.style.pointerEvents = "auto";
+        }
+    }
+    
+    checkVideoState();
+    
+    const imgPath = document.getElementById('encStaticImagePath');
+    if (imgPath && !imgPath.hasAttribute('data-ui-listener')) {
+        imgPath.setAttribute('data-ui-listener', 'true');
+        // We need to poll or watch for changes since value can be set via JS from Go
+        setInterval(checkVideoState, 1000);
+    }
+};
 
 function showPanel(panel) {
     welcomePanel.style.display = 'none';
@@ -1714,9 +1790,206 @@ function setupEncoderListeners() {
         }
     });
 
+    // Batch Mode Event Listeners & Setup
+    const encoderModeSingleBtn = document.getElementById('encoderModeSingleBtn');
+    const encoderModeBatchBtn = document.getElementById('encoderModeBatchBtn');
+    const encoderSourceSingleCard = document.getElementById('encoderSourceSingleCard');
+    const encoderSourceBatchCard = document.getElementById('encoderSourceBatchCard');
+    
+    const addBatchFilesBtn = document.getElementById('addBatchFilesBtn');
+    const setBatchOutputDirBtn = document.getElementById('setBatchOutputDirBtn');
+    const clearBatchQueueBtn = document.getElementById('clearBatchQueueBtn');
+    const batchOutputDirDisplay = document.getElementById('batchOutputDirDisplay');
+
+    if (encoderModeSingleBtn && encoderModeBatchBtn) {
+        encoderModeSingleBtn.addEventListener('click', () => {
+            encoderModeSingleBtn.classList.add('active');
+            encoderModeBatchBtn.classList.remove('active');
+            encoderSourceSingleCard.style.display = 'block';
+            encoderSourceBatchCard.style.display = 'none';
+            window.isBatchModeActive = false;
+            startTranscodeBtn.innerText = "Transcode";
+        });
+
+        encoderModeBatchBtn.addEventListener('click', async () => {
+            encoderModeBatchBtn.classList.add('active');
+            encoderModeSingleBtn.classList.remove('active');
+            encoderSourceSingleCard.style.display = 'none';
+            encoderSourceBatchCard.style.display = 'flex';
+            window.isBatchModeActive = true;
+            startTranscodeBtn.innerText = "Start Batch Process";
+            renderBatchQueue();
+            
+            // Sync initial batch output folder from global settings
+            try {
+                const settings = await GetOutputSettings();
+                const outputMode = settings.outputMode || "ask";
+                
+                if (outputMode === "fixed" && settings.fixedOutputDir) {
+                    window.batchOutputDir = settings.fixedOutputDir;
+                    batchOutputDirDisplay.innerText = `Output Folder: ${settings.fixedOutputDir}`;
+                    batchOutputDirDisplay.style.display = 'block';
+                } else if (outputMode === "same") {
+                    window.batchOutputDir = "SAME_AS_ORIGINAL";
+                    batchOutputDirDisplay.innerText = `Output Folder: Same as Original File`;
+                    batchOutputDirDisplay.style.display = 'block';
+                } else {
+                    window.batchOutputDir = "";
+                    batchOutputDirDisplay.style.display = 'none';
+                }
+            } catch (err) {
+                console.warn("Could not fetch output settings:", err);
+            }
+        });
+    }
+
+    if (addBatchFilesBtn) {
+        addBatchFilesBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            try {
+                const paths = await SelectMultipleFiles();
+                if (paths && paths.length > 0) {
+                    paths.forEach(p => addFileToBatchQueue(p));
+                }
+            } catch (err) {
+                showError("File Selection Failed", err);
+            }
+        });
+    }
+
+    if (setBatchOutputDirBtn) {
+        setBatchOutputDirBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            try {
+                const dir = await SelectFolder();
+                if (dir) {
+                    window.batchOutputDir = dir;
+                    batchOutputDirDisplay.innerText = `Output Folder: ${dir}`;
+                    batchOutputDirDisplay.style.display = 'block';
+                }
+            } catch (err) {
+                showError("Folder Selection Failed", err);
+            }
+        });
+    }
+
+    if (clearBatchQueueBtn) {
+        clearBatchQueueBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            window.batchQueue = [];
+            renderBatchQueue();
+        });
+    }
+
+    window.addFileToBatchQueue = async function(filePath) {
+        if (window.batchQueue.some(item => item.filePath === filePath)) {
+            showToast("File is already in the queue!");
+            return;
+        }
+        
+        const item = {
+            filePath: filePath,
+            fileName: getFileName(filePath),
+            duration: 0,
+            durationStr: '--:--:--',
+            status: 'queued',
+            percent: 0
+        };
+        window.batchQueue.push(item);
+        renderBatchQueue();
+        
+        try {
+            const jsonStr = await GetMediaInfo(filePath);
+            const data = JSON.parse(jsonStr);
+            const dur = data.format && data.format.duration ? parseFloat(data.format.duration) : 0;
+            item.duration = dur;
+            item.durationStr = dur ? formatSeconds(dur) : '00:00:00';
+            renderBatchQueue();
+        } catch (e) {
+            console.error("Failed to parse media info for " + filePath, e);
+        }
+    };
+
+    window.renderBatchQueue = function() {
+        const listContainer = document.getElementById('batchQueueList');
+        const countDisplay = document.getElementById('batchQueueCount');
+        if (!listContainer) return;
+        
+        countDisplay.innerText = `${window.batchQueue.length} files in queue`;
+        
+        if (window.batchQueue.length === 0) {
+            listContainer.innerHTML = `
+                <tr>
+                    <td colspan="4" style="padding: 1.5rem; text-align: center; color: var(--text-muted);">
+                        Queue is empty. Click "Add Files" or drag & drop files here.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        listContainer.innerHTML = window.batchQueue.map((item, index) => {
+            let statusBadge = '';
+            if (item.status === 'queued') {
+                statusBadge = `<span style="color: var(--text-muted); background: rgba(255,255,255,0.05); padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.75rem;">Queued</span>`;
+            } else if (item.status === 'processing') {
+                statusBadge = `<span style="color: var(--color-primary); background: rgba(89, 209, 79, 0.1); padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">Encoding (${item.percent}%)</span>`;
+            } else if (item.status === 'done') {
+                statusBadge = `<span style="color: #3db843; background: rgba(61, 184, 67, 0.1); padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">Completed</span>`;
+            } else if (item.status === 'failed') {
+                statusBadge = `<span style="color: #ef4444; background: rgba(239, 68, 68, 0.1); padding: 0.2rem 0.4rem; border-radius: 4px; font-size: 0.75rem; font-weight: bold;">Failed</span>`;
+            }
+            
+            return `
+                <tr style="border-bottom: 1px solid var(--border-color); color: var(--text-muted);">
+                    <td style="padding: 0.6rem 0.8rem; font-family: monospace; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${item.filePath}">
+                        ${item.fileName}
+                    </td>
+                    <td style="padding: 0.6rem 0.8rem;">${item.durationStr}</td>
+                    <td style="padding: 0.6rem 0.8rem;">${statusBadge}</td>
+                    <td style="padding: 0.6rem 0.8rem; text-align: center;">
+                        <button onclick="window.removeBatchItem(${index})" style="background: none; border: none; color: #ef4444; cursor: pointer; display: flex; align-items: center; justify-content: center; margin: auto;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    };
+
+    window.removeBatchItem = function(index) {
+        window.batchQueue.splice(index, 1);
+        renderBatchQueue();
+    };
+
     // 9. Start Transcode trigger
     startTranscodeBtn.addEventListener('click', async () => {
-        if (!currentFilePath) return;
+        if (window.isBatchModeActive) {
+            if (window.batchQueue.length === 0) {
+                showToast("Please add files to the batch queue first!");
+                return;
+            }
+            if (!window.batchOutputDir) {
+                try {
+                    const dir = await SelectFolder();
+                    if (!dir) {
+                        showToast("Output folder selection cancelled.");
+                        return;
+                    }
+                    window.batchOutputDir = dir;
+                    batchOutputDirDisplay.innerText = `Output Folder: ${dir}`;
+                    batchOutputDirDisplay.style.display = 'block';
+                } catch (e) {
+                    showError("Folder Selection Failed", e);
+                    return;
+                }
+            }
+        } else {
+            if (!currentFilePath) {
+                showToast("Please drag & drop or select a file first!");
+                return;
+            }
+        }
 
         let vCodecVal = encVCodec.value;
         if (vCodecVal === 'custom') vCodecVal = document.getElementById('encVCodecCustom').value.trim() || 'libx264';
@@ -1759,11 +2032,10 @@ function setupEncoderListeners() {
         let aBitrateVal = audioCbrSelect.value;
         if (aBitrateVal === 'custom') aBitrateVal = document.getElementById('audioCbrCustom').value.trim() || '192k';
         if (!aBitrateVal.endsWith('k') && !aBitrateVal.endsWith('K') && !aBitrateVal.endsWith('M') && !aBitrateVal.endsWith('m')) {
-            if (!isNaN(parseInt(aBitrateVal))) aBitrateVal += 'k'; // Default to k if user just types numbers
+            if (!isNaN(parseInt(aBitrateVal))) aBitrateVal += 'k';
         }
         
         const aVbrVal = audioVbrSlider.value;
-        
         const channelsVal = encAudioChannels.value;
         
         let targetFormatVal = encTargetFormat.value;
@@ -1772,34 +2044,113 @@ function setupEncoderListeners() {
         const staticImgVal = document.getElementById('encStaticImagePath').value.trim();
         const vPresetVal = document.getElementById('encPreset').value;
 
-        showLoader(`Encoding custom transcoded file...`, true);
-        try {
-            const outputPath = await TranscodeFile(
-                currentFilePath,
-                vCodecVal,
-                vRateModeVal,
-                vBitrateVal,
-                vMaxBitrateVal,
-                vCrfVal,
-                resVal,
-                fpsVal,
-                aspectVal,
-                vPresetVal,
-                aCodecVal,
-                aRateModeVal,
-                aBitrateVal,
-                aVbrVal,
-                channelsVal,
-                targetFormatVal,
-                staticImgVal,
-                currentDuration
-            );
+        if (window.isBatchModeActive) {
+            let successCount = 0;
+            let failCount = 0;
+            
+            for (let i = 0; i < window.batchQueue.length; i++) {
+                const item = window.batchQueue[i];
+                item.status = 'processing';
+                item.percent = 0;
+                renderBatchQueue();
+                
+                showLoader(`[${i + 1}/${window.batchQueue.length}] Encoding: ${item.fileName}...`, true);
+                
+                currentDuration = item.duration;
+                
+                const baseName = item.fileName;
+                const dotIdx = baseName.lastIndexOf('.');
+                const nameWithoutExt = dotIdx !== -1 ? baseName.substring(0, dotIdx) : baseName;
+                const targetExt = targetFormatVal === 'original' || targetFormatVal === '' ? baseName.split('.').pop() : targetFormatVal;
+                
+                let outPath = "";
+                if (window.batchOutputDir === "SAME_AS_ORIGINAL") {
+                    const dir = item.filePath.substring(0, item.filePath.lastIndexOf('\\') + 1 || item.filePath.lastIndexOf('/') + 1);
+                    outPath = dir + nameWithoutExt + "_encoded." + targetExt;
+                } else {
+                    outPath = window.batchOutputDir + "\\" + nameWithoutExt + "_encoded." + targetExt;
+                }
+                
+                try {
+                    progressBarFill.style.width = `0%`;
+                    progressBarText.innerText = `0%`;
+                    
+                    await TranscodeFile(
+                        item.filePath,
+                        vCodecVal,
+                        vRateModeVal,
+                        vBitrateVal,
+                        vMaxBitrateVal,
+                        vCrfVal,
+                        resVal,
+                        fpsVal,
+                        aspectVal,
+                        vPresetVal,
+                        aCodecVal,
+                        aRateModeVal,
+                        aBitrateVal,
+                        aVbrVal,
+                        channelsVal,
+                        targetFormatVal,
+                        staticImgVal,
+                        window.advancedCutStartTime || "",
+                        window.advancedCutEndTime || "",
+                        window.advancedCutSeekMode || "fast",
+                        window.advancedCutAvoidNegative !== undefined ? window.advancedCutAvoidNegative : true,
+                        window.advancedCropFilter || "",
+                        outPath,
+                        item.duration
+                    );
+                    item.status = 'done';
+                    item.percent = 100;
+                    successCount++;
+                } catch (err) {
+                    console.error("Transcode failed for " + item.filePath, err);
+                    item.status = 'failed';
+                    failCount++;
+                }
+                renderBatchQueue();
+            }
+            
             showPanel(encoderPanel);
-            showToast(`Encoding completed successfully!\nSaved to:\n${outputPath}`);
-        } catch (err) {
-            showPanel(encoderPanel);
-            if (err && err.includes("cancelled")) return;
-            showError("Encoding Error", err);
+            showToast(`Batch processing completed!\nSuccess: ${successCount} files\nFailed: ${failCount} files`);
+        } else {
+            showLoader(`Encoding custom transcoded file...`, true);
+            try {
+                const outputPath = await TranscodeFile(
+                    currentFilePath,
+                    vCodecVal,
+                    vRateModeVal,
+                    vBitrateVal,
+                    vMaxBitrateVal,
+                    vCrfVal,
+                    resVal,
+                    fpsVal,
+                    aspectVal,
+                    vPresetVal,
+                    aCodecVal,
+                    aRateModeVal,
+                    aBitrateVal,
+                    aVbrVal,
+                    channelsVal,
+                    targetFormatVal,
+                    staticImgVal,
+                    window.advancedCutStartTime || "",
+                    window.advancedCutEndTime || "",
+                    window.advancedCutSeekMode || "fast",
+                    window.advancedCutAvoidNegative !== undefined ? window.advancedCutAvoidNegative : true,
+                    window.advancedCropFilter || "",
+                    "",
+                    currentDuration
+                );
+                showPanel(encoderPanel);
+                showToast(`Encoding completed successfully!\nSaved to:\n${outputPath}`);
+            } catch (err) {
+                showPanel(encoderPanel);
+                alert("Error in TranscodeFile: " + (err.message || err.toString()));
+                if (err && typeof err === 'string' && err.includes("cancelled")) return;
+                showError("Encoding Error", err);
+            }
         }
     });
 
@@ -1994,16 +2345,41 @@ ffmpeg -y -i "${currentFilePath}" -map 0:${streamIndex} -c copy "${outputPath}"`
     };
 
     // Cut Modal Events & Helpers
+    window.isAdvancedCut = false;
+    window.advancedCutStartTime = "";
+    window.advancedCutEndTime = "";
+    window.advancedCutSeekMode = "fast";
+    window.advancedCutAvoidNegative = true;
+
     if (openCutModalBtn) {
         openCutModalBtn.addEventListener('click', () => {
             if (!currentFilePath) {
                 showToast("Please drag & drop or select a file first!");
                 return;
             }
+            window.isAdvancedCut = false;
+            document.getElementById('executeCutBtn').innerText = "Start Trimming";
             cutModal.style.display = 'flex';
             setTimeout(() => { cutModal.style.opacity = '1'; }, 10);
         });
     }
+
+    const openAdvancedCutModal = () => {
+        if (!currentFilePath) {
+            showToast("Please drag & drop or select a file first!");
+            return;
+        }
+        window.isAdvancedCut = true;
+        document.getElementById('executeCutBtn').innerText = "Save Trim Settings";
+        cutModal.style.display = 'flex';
+        setTimeout(() => { cutModal.style.opacity = '1'; }, 10);
+    };
+
+    const advancedCutVideoBtn = document.getElementById('advancedCutVideoBtn');
+    if (advancedCutVideoBtn) advancedCutVideoBtn.addEventListener('click', openAdvancedCutModal);
+    
+    const advancedCutAudioBtn = document.getElementById('advancedCutAudioBtn');
+    if (advancedCutAudioBtn) advancedCutAudioBtn.addEventListener('click', openAdvancedCutModal);
 
     const closeCutModal = () => {
         cutModal.style.opacity = '0';
@@ -2103,6 +2479,26 @@ ffmpeg -y -i "${currentFilePath}" -map 0:${streamIndex} -c copy "${outputPath}"`
     if (executeCutBtn) {
         executeCutBtn.addEventListener('click', async () => {
             if (!currentFilePath) return;
+            
+            if (window.isAdvancedCut) {
+                const startH = document.getElementById('startH').value;
+                const startM = document.getElementById('startM').value;
+                const startS = document.getElementById('startS').value;
+                
+                const endH = document.getElementById('endH').value;
+                const endM = document.getElementById('endM').value;
+                const endS = document.getElementById('endS').value;
+
+                window.advancedCutStartTime = `${startH}:${startM}:${startS}`;
+                window.advancedCutEndTime = `${endH}:${endM}:${endS}`;
+                window.advancedCutSeekMode = document.querySelector('input[name="seekMode"]:checked').value;
+                window.advancedCutAvoidNegative = document.getElementById('avoidNegativeTs').checked;
+                
+                closeCutModal();
+                showToast("Trim settings saved for transcoding!");
+                return;
+            }
+
             closeCutModal();
             const details = getCutDetails();
             
@@ -2119,6 +2515,195 @@ ffmpeg -y -i "${currentFilePath}" -map 0:${streamIndex} -c copy "${outputPath}"`
                 if (err && err.includes("cancelled")) return;
                 showError("Trim Error", err);
             }
+        });
+    }
+
+    // Crop Modal Logic
+    const cropModal = document.getElementById('cropModal');
+    const openCropModalBtn = document.getElementById('openCropModalBtn');
+    const closeCropModalBtn = document.getElementById('closeCropModalBtn');
+    const closeCropModalBtnSecondary = document.getElementById('closeCropModalBtnSecondary');
+    const applyCropBtn = document.getElementById('applyCropBtn');
+    const cropVideo = document.getElementById('cropVideo');
+    const cropBox = document.getElementById('cropBox');
+    const cropContainer = document.getElementById('cropContainer');
+
+    window.advancedCropFilter = "";
+
+    const closeCropModal = () => {
+        cropModal.style.opacity = '0';
+        setTimeout(() => {
+            cropModal.style.display = 'none';
+            if (cropVideo) cropVideo.src = "";
+        }, 200);
+    };
+
+    if (closeCropModalBtn) closeCropModalBtn.addEventListener('click', closeCropModal);
+    if (closeCropModalBtnSecondary) closeCropModalBtnSecondary.addEventListener('click', closeCropModal);
+
+    if (openCropModalBtn) {
+        openCropModalBtn.addEventListener('click', () => {
+            if (!currentFilePath) {
+                showToast("Please drag & drop or select a file first!");
+                return;
+            }
+            cropVideo.src = "/stream/" + currentFilePath.split('\\').map(encodeURIComponent).join('/');
+            cropVideo.onloadedmetadata = () => {
+                if (cropContainer && cropVideo.videoWidth && cropVideo.videoHeight) {
+                    cropContainer.style.aspectRatio = `${cropVideo.videoWidth} / ${cropVideo.videoHeight}`;
+                }
+            };
+            cropModal.style.display = 'flex';
+            setTimeout(() => { cropModal.style.opacity = '1'; }, 10);
+            
+            cropBox.style.left = '10%';
+            cropBox.style.top = '10%';
+            cropBox.style.width = '50%';
+            cropBox.style.height = '50%';
+        });
+    }
+
+    let isDraggingCrop = false;
+    let isResizingCrop = false;
+    let resizeHandle = '';
+    let cropDragStartX = 0;
+    let cropDragStartY = 0;
+    let cropBoxStartLeft = 0;
+    let cropBoxStartTop = 0;
+    let cropBoxStartWidth = 0;
+    let cropBoxStartHeight = 0;
+
+    if (cropBox) {
+        cropBox.addEventListener('mousedown', (e) => {
+            if (e.target.classList.contains('crop-handle')) {
+                isResizingCrop = true;
+                resizeHandle = e.target.className.replace('crop-handle', '').trim();
+            } else {
+                isDraggingCrop = true;
+            }
+            
+            cropDragStartX = e.clientX;
+            cropDragStartY = e.clientY;
+            cropBoxStartLeft = cropBox.offsetLeft;
+            cropBoxStartTop = cropBox.offsetTop;
+            cropBoxStartWidth = cropBox.offsetWidth;
+            cropBoxStartHeight = cropBox.offsetHeight;
+            e.preventDefault();
+        });
+    }
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isDraggingCrop && !isResizingCrop) return;
+        
+        let dx = e.clientX - cropDragStartX;
+        let dy = e.clientY - cropDragStartY;
+        let containerRect = cropContainer.getBoundingClientRect();
+        
+        if (isDraggingCrop) {
+            let newLeft = cropBoxStartLeft + dx;
+            let newTop = cropBoxStartTop + dy;
+            
+            if (newLeft < 0) newLeft = 0;
+            if (newTop < 0) newTop = 0;
+            
+            if (newLeft + cropBox.offsetWidth > containerRect.width) {
+                newLeft = containerRect.width - cropBox.offsetWidth;
+            }
+            if (newTop + cropBox.offsetHeight > containerRect.height) {
+                newTop = containerRect.height - cropBox.offsetHeight;
+            }
+            
+            cropBox.style.left = newLeft + 'px';
+            cropBox.style.top = newTop + 'px';
+        } else if (isResizingCrop) {
+            let newLeft = cropBoxStartLeft;
+            let newTop = cropBoxStartTop;
+            let newWidth = cropBoxStartWidth;
+            let newHeight = cropBoxStartHeight;
+            
+            if (resizeHandle.includes('e')) newWidth += dx;
+            if (resizeHandle.includes('w')) {
+                newWidth -= dx;
+                newLeft += dx;
+            }
+            if (resizeHandle.includes('s')) newHeight += dy;
+            if (resizeHandle.includes('n')) {
+                newHeight -= dy;
+                newTop += dy;
+            }
+            
+            // Min size
+            if (newWidth < 40) {
+                if (resizeHandle.includes('w')) newLeft -= (40 - newWidth);
+                newWidth = 40;
+            }
+            if (newHeight < 40) {
+                if (resizeHandle.includes('n')) newTop -= (40 - newHeight);
+                newHeight = 40;
+            }
+            
+            // Boundaries
+            if (newLeft < 0) {
+                newWidth += newLeft;
+                newLeft = 0;
+            }
+            if (newTop < 0) {
+                newHeight += newTop;
+                newTop = 0;
+            }
+            if (newLeft + newWidth > containerRect.width) {
+                newWidth = containerRect.width - newLeft;
+            }
+            if (newTop + newHeight > containerRect.height) {
+                newHeight = containerRect.height - newTop;
+            }
+            
+            cropBox.style.left = newLeft + 'px';
+            cropBox.style.top = newTop + 'px';
+            cropBox.style.width = newWidth + 'px';
+            cropBox.style.height = newHeight + 'px';
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        isDraggingCrop = false;
+        isResizingCrop = false;
+        resizeHandle = '';
+    });
+
+    if (applyCropBtn) {
+        applyCropBtn.addEventListener('click', () => {
+            if (!cropVideo.videoWidth) {
+                showToast("Video not fully loaded yet. Please wait.");
+                return;
+            }
+            const vidRect = cropVideo.getBoundingClientRect();
+            const boxRect = cropBox.getBoundingClientRect();
+            
+            const renderW = vidRect.width;
+            const renderH = vidRect.height;
+            const origW = cropVideo.videoWidth;
+            const origH = cropVideo.videoHeight;
+            
+            const scaleX = origW / renderW;
+            const scaleY = origH / renderH;
+            
+            const boxLeft = boxRect.left - vidRect.left;
+            const boxTop = boxRect.top - vidRect.top;
+            
+            let cropX = Math.round(boxLeft * scaleX);
+            let cropY = Math.round(boxTop * scaleY);
+            let cropW = Math.round(boxRect.width * scaleX);
+            let cropH = Math.round(boxRect.height * scaleY);
+            
+            if (cropX < 0) cropX = 0;
+            if (cropY < 0) cropY = 0;
+            if (cropX + cropW > origW) cropW = origW - cropX;
+            if (cropY + cropH > origH) cropH = origH - cropY;
+            
+            window.advancedCropFilter = `crop=${cropW}:${cropH}:${cropX}:${cropY}`;
+            closeCropModal();
+            showToast("Crop settings saved for transcoding! (" + cropW + "x" + cropH + ")");
         });
     }
 
@@ -2321,16 +2906,43 @@ function generateFFmpegCommand() {
 
     // Build the string representation
     const args = ["ffmpeg", "-y"];
+    
+    if (window.advancedCutAvoidNegative && window.advancedCutStartTime && window.advancedCutEndTime) {
+        args.push("-avoid_negative_ts", "make_zero");
+    }
+
     if (staticImgVal) {
         if (fpsVal !== "original" && fpsVal !== "") {
             args.push("-framerate", fpsVal);
         } else {
             args.push("-framerate", "1");
         }
-        args.push("-loop", "1", "-i", `"${staticImgVal}"`, "-i", `"${currentFilePath}"`);
+        
+        if (window.advancedCutStartTime && window.advancedCutEndTime) {
+            if (window.advancedCutSeekMode === "fast") {
+                args.push("-ss", window.advancedCutStartTime, "-to", window.advancedCutEndTime);
+            }
+        }
+        
+        args.push("-loop", "1", "-i", `"${staticImgVal}"`);
+        
+        if (window.advancedCutStartTime && window.advancedCutEndTime && window.advancedCutSeekMode !== "fast") {
+            args.push("-ss", window.advancedCutStartTime, "-to", window.advancedCutEndTime);
+        }
+        args.push("-i", `"${currentFilePath}"`);
         args.push("-map", "0:v:0", "-map", "1:a:0");
     } else {
-        args.push("-i", `"${currentFilePath}"`);
+        if (window.advancedCutStartTime && window.advancedCutEndTime) {
+            if (window.advancedCutSeekMode === "fast") {
+                args.push("-ss", window.advancedCutStartTime, "-to", window.advancedCutEndTime);
+                args.push("-i", `"${currentFilePath}"`);
+            } else {
+                args.push("-i", `"${currentFilePath}"`);
+                args.push("-ss", window.advancedCutStartTime, "-to", window.advancedCutEndTime);
+            }
+        } else {
+            args.push("-i", `"${currentFilePath}"`);
+        }
     }
 
     // --- Video Configuration ---
@@ -2348,6 +2960,9 @@ function generateFFmpegCommand() {
 
         // Video filters
         const videoFilters = [];
+        if (window.advancedCropFilter) {
+            videoFilters.push(window.advancedCropFilter);
+        }
         if (resVal !== "original" && resVal !== "") {
             videoFilters.push(`scale=${resVal}`);
         }
