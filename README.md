@@ -14,7 +14,7 @@ EZFF is a premium, high-performance, glassmorphic desktop media-processing suite
 
 ---
 [![Latest Release](https://img.shields.io/github/v/release/mohmd-v1/EZFF?style=for-the-badge&color=59D14F)](https://github.com/mohmd-v1/EZFF/releases)
-### 📥 [Download Latest Release for Windows (ZIP)](https://github.com/mohmd-v1/EZFF/releases/download/v1.0.0/easyffmpeg.zip)
+### 📥 [Download Latest Release for Windows (ZIP)](https://github.com/mohmd-v1/EZFF/releases/download/v1.0.1/easy-ffmpeg.zip)
 
 
 ---
